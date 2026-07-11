@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Email Traffic Analyzer</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Chart.js for protocol distribution chart -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ─── Header ──────────────────────────────────────────── -->
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">📡</div>
+        <div>
+          <span class="logo-text">Email Traffic Analyzer</span>
+          <span class="logo-sub">SMTP · POP3 · IMAP · PCAP Forensics</span>
+        </div>
+      </div>
+      <div class="header-status">
+        <div class="status-dot"></div>
+        <span id="header-status-text">Ready</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── Main ─────────────────────────────────────────────── -->
+  <main>
+
+    <!-- Upload Section -->
+    <section class="upload-section">
+      <div class="section-label">Upload Capture File</div>
+
+      <div class="drop-zone" id="drop-zone">
+        <span class="drop-icon">📂</span>
+        <div class="drop-title">Drop your PCAP file here</div>
+        <div class="drop-subtitle">.pcap · .pcapng · .cap — Wireshark captures supported</div>
+        <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">
+          ⬆ Browse File
+        </button>
+        <input type="file" id="file-input" accept=".pcap,.pcapng,.cap" />
+        <div class="drop-meta">Max 100 MB · Packets are not stored after analysis</div>
+      </div>
+
+      <!-- Progress indicator -->
+      <div class="progress-wrap" id="progress-wrap">
+        <div class="progress-label">
+          <span id="progress-label-text">Uploading...</span>
+          <span id="progress-pct">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- Action row shown after file selected -->
+      <div id="file-info-row" class="hidden mt-12" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <span class="badge badge-smtp" id="selected-file-name">—</span>
+        <button class="btn btn-primary" id="analyze-btn" onclick="startAnalysis()">
+          🔍 Analyze
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="loadDemo()">
+          ▶ Load Demo
+        </button>
+        <button class="btn btn-danger-outline btn-sm" onclick="clearAll()">
+          ✕ Clear
+        </button>
+      </div>
+
+      <!-- Demo button shown initially -->
+      <div id="demo-row" class="mt-12">
+        <button class="btn btn-outline btn-sm" onclick="loadDemo()">▶ Try Demo (no file needed)</button>
+      </div>
+    </section>
+
+    <!-- ── Results (hidden until analysis) ─────────────────── -->
+    <section id="results-section" class="hidden">
+
+      <!-- Stats Bar -->
+      <div class="stats-bar" id="stats-bar">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-total">0</div>
+          <div class="stat-label">Total Packets</div>
+        </div>
+        <div class="stat-card smtp">
+          <div class="stat-value" id="stat-smtp">0</div>
+          <div class="stat-label">SMTP</div>
+        </div>
+        <div class="stat-card pop3">
+          <div class="stat-value" id="stat-pop3">0</div>
+          <div class="stat-label">POP3</div>
+        </div>
+        <div class="stat-card imap">
+          <div class="stat-value" id="stat-imap">0</div>
+          <div class="stat-label">IMAP</div>
+        </div>
+        <div class="stat-card warn">
+          <div class="stat-value" id="stat-warnings">0</div>
+          <div class="stat-label">Security Issues</div>
+        </div>
+      </div>
+
+      <!-- Results Grid -->
+      <div class="results-grid">
+
+        <!-- ── Left: Packet Table ───────────────────────────── -->
+        <div>
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><span class="icon">📋</span> Packet Log</div>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-outline btn-sm" onclick="exportJSON()">⬇ JSON</button>
+                <button class="btn btn-outline btn-sm" onclick="exportCSV()">⬇ CSV</button>
+              </div>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="toolbar">
+              <button class="filter-btn active" data-filter="all" onclick="filterPackets('all', this)">All</button>
+              <button class="filter-btn smtp-btn" data-filter="SMTP" onclick="filterPackets('SMTP', this)">SMTP</button>
+              <button class="filter-btn pop3-btn" data-filter="POP3" onclick="filterPackets('POP3', this)">POP3</button>
+              <button class="filter-btn imap-btn" data-filter="IMAP" onclick="filterPackets('IMAP', this)">IMAP</button>
+              <button class="filter-btn warn-btn" data-filter="suspicious" onclick="filterPackets('suspicious', this)">⚠ Suspicious</button>
+              <div class="toolbar-right">
+                <input class="search-box" type="text" placeholder="Search IP, command…" oninput="searchPackets(this.value)" />
+              </div>
+            </div>
+
+            <!-- Table -->
+            <div class="table-wrap">
+              <table id="packet-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Timestamp</th>
+                    <th>Source IP</th>
+                    <th>Dest IP</th>
+                    <th>Proto</th>
+                    <th>Command</th>
+                    <th>Status</th>
+                    <th>Payload Preview</th>
+                  </tr>
+                </thead>
+                <tbody id="packet-tbody">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+              <div id="empty-state" class="empty-state hidden">
+                <div class="empty-icon">🔍</div>
+                <p>No packets match the current filter.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── TCP Stream Viewer ──────────────────────────── -->
+          <div class="panel stream-section">
+            <div class="panel-header">
+              <div class="panel-title"><span class="icon">🔗</span> TCP Stream Reconstruction</div>
+            </div>
+            <div class="panel-body">
+              <select class="stream-select" id="stream-select" onchange="renderStream()">
+                <option value="">— Select a stream —</option>
+              </select>
+              <div class="stream-terminal" id="stream-terminal">
+                <span class="text-dim">Select a stream above to view reconstructed communication.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Right Sidebar ────────────────────────────────── -->
+        <div style="display:flex; flex-direction:column; gap:16px;">
+
+          <!-- Protocol Distribution Chart -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><span class="icon">📊</span> Distribution</div>
+            </div>
+            <div class="panel-body">
+              <div class="chart-wrap">
+                <canvas id="proto-chart"></canvas>
+              </div>
+              <div class="chart-legend" id="chart-legend"></div>
+            </div>
+          </div>
+
+          <!-- Security Insights -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><span class="icon">🛡</span> Security Insights</div>
+            </div>
+            <div class="panel-body">
+              <div class="security-list" id="security-list">
+                <!-- Populated by JS -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Discovered Emails -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><span class="icon">✉</span> Email Addresses</div>
+            </div>
+            <div class="panel-body">
+              <div class="text-dim" style="font-size:11px;">Extracted from traffic payloads:</div>
+              <div class="email-chips" id="email-chips">
+                <!-- Populated by JS -->
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /results-grid -->
+
+    </section><!-- /results-section -->
+
+  </main>
+
+  <footer>
+    Email Traffic Analyzer · SMTP/POP3/IMAP PCAP Forensics · Built with Flask + Scapy + Chart.js
+  </footer>
+
+</div><!-- /app-shell -->
+
+<!-- Packet Detail Drawer -->
+<div class="detail-drawer" id="detail-drawer">
+  <div class="drawer-header">
+    <span class="drawer-title">Packet Detail</span>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-body" id="drawer-body">
+    <!-- Populated by JS -->
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
