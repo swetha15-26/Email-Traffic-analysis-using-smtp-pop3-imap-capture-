@@ -211,4 +211,5 @@ Frontend (CDN, no install needed):
 
 ## 📄 License
 
+<<<<<<< HEAD
 MIT — free to use and modify.
